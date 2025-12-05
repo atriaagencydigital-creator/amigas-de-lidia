@@ -18,11 +18,30 @@ app.use(cors({
 app.use(express.json());
 
 // Database Setup
-const sequelize = new Sequelize({
-    dialect: 'sqlite',
-    storage: DATABASE_PATH,
-    logging: false
-});
+// Database Setup
+let sequelize;
+
+if (process.env.POSTGRES_URL) {
+    // Production (Vercel/Postgres)
+    sequelize = new Sequelize(process.env.POSTGRES_URL, {
+        dialect: 'postgres',
+        dialectModule: require('pg'),
+        logging: false,
+        dialectOptions: {
+            ssl: {
+                require: true,
+                rejectUnauthorized: false
+            }
+        }
+    });
+} else {
+    // Development (Local SQLite)
+    sequelize = new Sequelize({
+        dialect: 'sqlite',
+        storage: DATABASE_PATH,
+        logging: false
+    });
+}
 
 // Models
 const Admin = sequelize.define('Admin', {
@@ -172,8 +191,11 @@ app.get('/api/transactions', async (req, res) => {
 });
 
 // Initialize demo user and admin on startup
+// Initialize demo user and admin on startup
 (async () => {
     try {
+        await sequelize.sync(); // Ensure tables exist
+
         // Initialize demo user
         const user = await User.findByPk(1);
         if (user) {
@@ -204,8 +226,14 @@ app.get('/api/transactions', async (req, res) => {
     }
 })();
 
-app.listen(PORT, () => {
-    console.log(`✓ Server running on port ${PORT}`);
-    console.log(`✓ CORS enabled for: ${CORS_ORIGIN}`);
-    console.log(`✓ Database: ${DATABASE_PATH}`);
-});
+// Export for Vercel
+module.exports = app;
+
+// Start server if running directly
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`✓ Server running on port ${PORT}`);
+        console.log(`✓ CORS enabled for: ${CORS_ORIGIN}`);
+        console.log(`✓ Database: ${process.env.POSTGRES_URL ? 'PostgreSQL' : DATABASE_PATH}`);
+    });
+}
